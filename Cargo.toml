@@ -5,4 +5,5 @@ edition = "2024"
 
 [dependencies]
 aeron-rs = "0.1.8"
+crossbeam = "0.8.4"
 rand = "0.9.1"
