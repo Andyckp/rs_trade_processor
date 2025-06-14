@@ -42,7 +42,7 @@ fn trade_publisher(sender: channel::Sender<TradeEvent>) {
 
         sender.send(trade_event).unwrap();
       
-        thread::sleep(Duration::from_millis(1)); // Submit trade every 1ms
+        thread::sleep(Duration::from_millis(1)); 
     }
 }
 
