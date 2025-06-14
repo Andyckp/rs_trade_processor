@@ -63,7 +63,7 @@ impl TradeProcessor {
     }
 }
 
-// Original: Test case for trade processing
+
 #[test]
 fn given_trade_processor_when_receive_raw_trade_and_instrument_then_process_enriched_trade() {
     let processor = TradeProcessor::new();

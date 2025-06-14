@@ -1,9 +1,3 @@
-// mod simple_trade_process;
-// mod trade_process;
-// mod data_structure;
-// mod data;
-// mod trade_processor;
-
 use disruptor_rs::{
     sequence::Sequence, DisruptorBuilder, EventHandler, EventProcessorExecutor, EventProducer, ExecutorHandle
 };
@@ -18,11 +12,7 @@ struct MyEventHandler;
 
 impl EventHandler<MyEvent> for MyEventHandler {
     fn on_event(&self, event: &MyEvent, sequence: Sequence, _end_of_batch: bool) {
-        // Handle the event's value
-        // For example, print it
-        // use 
         println!("Event value: {}", event.value);
-        // println!("Event processed");
     }
     fn on_start(&self) {}
     fn on_shutdown(&self) {}

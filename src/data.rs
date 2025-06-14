@@ -22,6 +22,6 @@ pub struct EnrichedTradeEvent {
     pub instrument_id: u64,
     pub price: f64,
     pub net_quantity: f64,
-    pub portfolio_id: [char; 16], // Fixed-size array for portfolio ID
+    pub portfolio_id: [char; 16], 
     pub processed_timestamp: u64,
 }

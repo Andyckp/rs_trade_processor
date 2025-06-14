@@ -13,7 +13,6 @@ const CHANNEL: &str = "aeron:ipc";  // Shared memory transport
 #[test]
 fn test_aeron_client() {
     let mut context = Context::new();
-//    context.set_aeron_dir(CString::new("/tmp/aeron").unwrap());
     context.set_aeron_dir("/tmp/aeron1".to_string());
     // context.set_term_buffer_length(1048576);
     let mut aeron = Aeron::new(context).expect("Failed to initialize Aeron");

@@ -3,7 +3,6 @@ use rand::Rng;
 use std::thread;
 use std::time::Duration;
 
-// Trade structure
 #[derive(Debug, Copy, Clone)]
 struct Trade {
     instrument_id: u64,
@@ -11,7 +10,6 @@ struct Trade {
     net_quantity: f64,
 }
 
-// TradeEvent (mutable placeholder for memory reuse)
 struct TradeEvent {
     trade: Trade,
 }
@@ -24,14 +22,12 @@ impl TradeEvent {
     }
 }
 
-// Trade processor (polls the channel continuously)
 fn trade_processor(receiver: channel::Receiver<TradeEvent>) {
     while let Ok(trade_event) = receiver.recv() {
         println!("Processing trade: {:?}", trade_event.trade);
     }
 }
 
-// Trade publisher (generates random trades)
 fn trade_publisher(sender: channel::Sender<TradeEvent>) {
     let mut rng: rand::prelude::ThreadRng = rand::thread_rng();
     
@@ -50,22 +46,17 @@ fn trade_publisher(sender: channel::Sender<TradeEvent>) {
     }
 }
 
-// Test case: Runs publisher for 10s
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
     fn test_trade_processing() {
-        let (tx, rx) = channel::bounded(1024); // Bounded channel with size 1024
+        let (tx, rx) = channel::bounded(1024); 
 
-        // Spawn trade processor thread
         let processor_thread = thread::spawn(move || trade_processor(rx));
-
-        // Spawn trade publisher thread
         let publisher_thread = thread::spawn(move || trade_publisher(tx));
 
-        // Wait for threads to complete
         publisher_thread.join().unwrap();
         processor_thread.join().unwrap();
     }
