@@ -4,3 +4,4 @@
 # (1) add Aeron and SBE support
 # (2) evaluate shared memory usage between components as different processes
 # (3) evaluate disruptor vs custom built ringbuffer in terms of functionalities and performance
+# (4) implemenmt padding for data structure to minimise false sharing
