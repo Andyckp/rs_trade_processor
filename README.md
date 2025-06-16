@@ -17,7 +17,7 @@ The primary goal of this project is to explore **Rust’s capabilities**, partic
 
 ---
 
-## Current Architecture  
+## Target Architecture  
 1. Subscribes to **raw trade data** and multiple input data types.  
 2. Stores data in **ring buffers**, categorized by type.  
 3. Publishes **enriched trades** using **multi-threading**, partitioned by asset ID.  
