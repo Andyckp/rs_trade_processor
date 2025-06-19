@@ -3,6 +3,7 @@ use std::{sync::Arc, thread};
 use ringbuf::{traits::{Producer, SplitRef}, StaticRb};
 use ringbuf::{traits::*};
 use stack_map::StackMap;
+use std::collections::HashMap;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 struct Key1(u64);
@@ -38,28 +39,29 @@ macro_rules! subscribeable_cache {
     ($name:ident, $key_type:ty, $value_type:ty, $buffer_size:expr, $subscriber_size:expr) => {
         pub struct $name {
             cache: StackMap<$key_type, $value_type, $buffer_size>,
-            subscribers: StackMap<u64, fn($key_type, Option<$value_type>), $subscriber_size>,
+            subscribers: HashMap<u64, Box<dyn FnMut($key_type, Option<$value_type>) + Send>>,
             next_subscriber_id: u64,
         }
 
         impl $name {
-            pub const fn new() -> Self {
+            pub fn new() -> Self {
                 Self {
                     cache: StackMap::new(),
-                    subscribers: StackMap::new(),
+                    subscribers: HashMap::new(),
                     next_subscriber_id: 0,
                 }
             }
 
-            pub fn subscribe(&mut self, subscriber: fn($key_type, Option<$value_type>)) -> u64 {
+            pub fn subscribe(&mut self, mut subscriber: Box<dyn FnMut($key_type, Option<$value_type>) + Send>) -> u64 {
                 let id = self.next_subscriber_id;
+
+                // Temporarily invoke the subscriber before moving it into the map
+                for (key, value) in self.cache.iter() {
+                    subscriber(*key, Some(*value));
+                }
+
                 if self.subscribers.insert(id, subscriber).is_none() {
                     self.next_subscriber_id += 1;
-                    // notify new subscriber of current cache state
-                    for (key, value) in self.cache.iter() {
-                        subscriber(*key, Some(*value));
-                    }
-
                     id
                 } else {
                     u64::MAX // Indicate failure
@@ -82,8 +84,8 @@ macro_rules! subscribeable_cache {
                 }
             }
 
-            fn notify_subscribers(&self, key: $key_type, value: Option<$value_type>) {
-                for (_, subscriber) in self.subscribers.iter() {
+            fn notify_subscribers(&mut self, key: $key_type, value: Option<$value_type>) {
+                for (_, subscriber) in self.subscribers.iter_mut() {
                     subscriber(key, value);
                 }
             }
@@ -91,13 +93,14 @@ macro_rules! subscribeable_cache {
     };
 }
 
+
 subscribeable_cache!(Cache1, Key1, Value1, 256, 8);
 subscribeable_cache!(Cache2, Key2, Value2, 256, 8);
 subscribeable_cache!(Cache3, Key3, Value3, 256, 8);
 
-static mut CACHE_1: Cache1 = Cache1::new();
-static mut CACHE_2: Cache2 = Cache2::new();
-static mut CACHE_3: Cache3 = Cache3::new();
+// static mut CACHE_1: Cache1 = Cache1::new();
+// static mut CACHE_2: Cache2 = Cache2::new();
+// static mut CACHE_3: Cache3 = Cache3::new();
 
 
 pub struct CompositeCache {
@@ -110,83 +113,83 @@ pub struct CompositeCache {
     cache3: Cache3,
 }
 
-impl CompositeCache {
-    pub fn new() -> Self {
-        Self {
-            rb1: StaticRb::default(),
-            rb2: StaticRb::default(),
-            rb3: StaticRb::default(),
-            cache1: Cache1::new(),
-            cache2: Cache2::new(),
-            cache3: Cache3::new(),
-        }
-    }
+// impl CompositeCache {
+//     pub fn new() -> Self {
+//         Self {
+//             rb1: StaticRb::default(),
+//             rb2: StaticRb::default(),
+//             rb3: StaticRb::default(),
+//             cache1: Cache1::new(),
+//             cache2: Cache2::new(),
+//             cache3: Cache3::new(),
+//         }
+//     }
 
-    pub fn run(&mut self) {
-        let (_, mut cons1) = self.rb1.split_ref();
-        let (_, mut cons2) = self.rb2.split_ref();
-        let (_, mut cons3) = self.rb3.split_ref();
+//     pub fn run(&mut self) {
+//         let (_, mut cons1) = self.rb1.split_ref();
+//         let (_, mut cons2) = self.rb2.split_ref();
+//         let (_, mut cons3) = self.rb3.split_ref();
 
-        loop {
-            while let Some(entry) = cons1.try_pop() {
-                self.cache1.put(entry.key, entry.value);
-            }
-            while let Some(entry) = cons2.try_pop() {
-                self.cache2.put(entry.key, entry.value);
-            }
-            while let Some(entry) = cons3.try_pop() {
-                self.cache3.put(entry.key, entry.value);
-            }
+//         loop {
+//             while let Some(entry) = cons1.try_pop() {
+//                 self.cache1.put(entry.key, entry.value);
+//             }
+//             while let Some(entry) = cons2.try_pop() {
+//                 self.cache2.put(entry.key, entry.value);
+//             }
+//             while let Some(entry) = cons3.try_pop() {
+//                 self.cache3.put(entry.key, entry.value);
+//             }
 
-            // Optional: pacing
-        }
-    }
+//             // Optional: pacing
+//         }
+//     }
 
-    pub fn put1(&mut self, key: Key1, value: Value1) -> bool {
-        let (mut prod, _) = self.rb1.split_ref();
-        prod.try_push(Entry1 { key, value }).is_ok()
-    }
+//     pub fn put1(&mut self, key: Key1, value: Value1) -> bool {
+//         let (mut prod, _) = self.rb1.split_ref();
+//         prod.try_push(Entry1 { key, value }).is_ok()
+//     }
 
-    pub fn put2(&mut self, key: Key2, value: Value2) -> bool {
-        let (mut prod, _) = self.rb2.split_ref();
-        prod.try_push(Entry2 { key, value }).is_ok()
-    }
+//     pub fn put2(&mut self, key: Key2, value: Value2) -> bool {
+//         let (mut prod, _) = self.rb2.split_ref();
+//         prod.try_push(Entry2 { key, value }).is_ok()
+//     }
 
-    pub fn put3(&mut self, key: Key3, value: Value3) -> bool {
-        let (mut prod, _) = self.rb3.split_ref();
-        prod.try_push(Entry3 { key, value }).is_ok()
-    }
+//     pub fn put3(&mut self, key: Key3, value: Value3) -> bool {
+//         let (mut prod, _) = self.rb3.split_ref();
+//         prod.try_push(Entry3 { key, value }).is_ok()
+//     }
 
-    pub fn subscribe1(&mut self, f: fn(Key1, Option<Value1>)) -> u64 {
-        self.cache1.subscribe(f)
-    }
+//     pub fn subscribe1(&mut self, f: fn(Key1, Option<Value1>)) -> u64 {
+//         self.cache1.subscribe(f)
+//     }
 
-    pub fn unsubscribe1(&mut self, id: u64) -> bool {
-        self.cache1.unsubscribe(id)
-    }
+//     pub fn unsubscribe1(&mut self, id: u64) -> bool {
+//         self.cache1.unsubscribe(id)
+//     }
 
-    pub fn subscribe2(&mut self, f: fn(Key2, Option<Value2>)) -> u64 {
-        self.cache2.subscribe(f)
-    }
+//     pub fn subscribe2(&mut self, f: fn(Key2, Option<Value2>)) -> u64 {
+//         self.cache2.subscribe(f)
+//     }
 
-    pub fn unsubscribe2(&mut self, id: u64) -> bool {
-        self.cache2.unsubscribe(id)
-    }
+//     pub fn unsubscribe2(&mut self, id: u64) -> bool {
+//         self.cache2.unsubscribe(id)
+//     }
 
-    pub fn subscribe3(&mut self, f: fn(Key3, Option<Value3>)) -> u64 {
-        self.cache3.subscribe(f)
-    }
+//     pub fn subscribe3(&mut self, f: fn(Key3, Option<Value3>)) -> u64 {
+//         self.cache3.subscribe(f)
+//     }
 
-    pub fn unsubscribe3(&mut self, id: u64) -> bool {
-        self.cache3.unsubscribe(id)
-    }
+//     pub fn unsubscribe3(&mut self, id: u64) -> bool {
+//         self.cache3.unsubscribe(id)
+//     }
 
-    pub fn start(mut self) {
-        thread::spawn(move || {
-            self.run();
-        });
-    }
-}
+//     pub fn start(mut self) {
+//         thread::spawn(move || {
+//             self.run();
+//         });
+//     }
+// }
 
 #[test]
 fn test_three_producers_and_one_consumer() {
@@ -231,9 +234,14 @@ fn test_three_producers_and_one_consumer() {
         let mut c2: Cache2 = Cache2::new();
         let mut c3 = Cache3::new();
 
-        c1.subscribe(|k, v| println!("Cache1: key={:?}, val={:?}", k.0, v.map(|v| v.0)));
-        c2.subscribe(|k, v| println!("Cache2: key={:?}, val={:?}", k.0, v.map(|v| v.0)));
-        c3.subscribe(|k, v| println!("Cache3: key={:?}, val={:?}", k.0, v.map(|v| v.0)));
+        // c1.subscribe(|k, v| println!("Cache1: key={:?}, val={:?}", k.0, v.map(|v| v.0)));
+        // c2.subscribe(|k, v| println!("Cache2: key={:?}, val={:?}", k.0, v.map(|v| v.0)));
+        // c3.subscribe(|k, v| println!("Cache3: key={:?}, val={:?}", k.0, v.map(|v| v.0)));
+
+        c1.subscribe(Box::new(|k, v| println!("Cache1: key={:?}, val={:?}", k.0, v.map(|v| v.0))));
+        c2.subscribe(Box::new(|k, v| println!("Cache2: key={:?}, val={:?}", k.0, v.map(|v| v.0))));
+        c3.subscribe(Box::new(|k, v| println!("Cache3: key={:?}, val={:?}", k.0, v.map(|v| v.0))));
+
 
         while c1.cache.len() < 100 || c2.cache.len() < 100 || c3.cache.len() < 100 {
             if let Some(e) = cons1.try_pop() {
@@ -264,13 +272,15 @@ fn test_three_producers_and_one_consumer() {
 #[test]
 fn test_independent_cache() {
     let rb_data_1 = StaticRb::<Entry1, 256>::default();
-    let rb_sub_1 = StaticRb::<fn(Key1, Option<Value1>), 256>::default();
-  
+    // let rb_sub_1 = StaticRb::<fn(Key1, Option<Value1>), 256>::default();
+    let rb_sub_1 = StaticRb::<Box<dyn FnMut(Key1, Option<Value1>) + Send>, 256>::default();
+
     let (mut prod_data_1, mut cons1) = rb_data_1.split();
     let (mut sub_prod_1, mut sub_cons1) = rb_sub_1.split();
  
-    
-   
+    let mut rb_downstream = StaticRb::<Entry1, 256>::default();
+    let (mut prod_downstream, mut cons_downstream) = rb_downstream.split();
+
     // Producer 1
     let t1 = thread::spawn(move || {
         for i in 0..100 {
@@ -298,9 +308,29 @@ fn test_independent_cache() {
     // sleep for a moment to ensure consumer is ready
     thread::sleep(std::time::Duration::from_millis(1));
 
-    sub_prod_1.try_push(|k, v| {
+    // sub_prod_1.try_push(|k, v| {
+    //     println!("Subscriber: key={:?}, val={:?}", k.0, v.map(|v| v.0));
+    //     prod_downstream.try_push(Entry1 { key: k, value: v.unwrap_or(Value1(0)) }).unwrap();
+    // });
+
+    // sub_prod_1.try_push(Box::new(move |k, v| {
+    //     println!("Subscriber: key={:?}, val={:?}", k.0, v.map(|v| v.0));
+    //     prod_downstream
+    //         .try_push(Entry1 { key: k, value: v.unwrap_or(Value1(0)) })
+    //         .unwrap();
+    // }));
+
+    // let mut prod_downstream = ...; // needs to be mutable
+
+    // let elem = Box::new(move |k: Key1, v: Option<Value1>| {
+    //     println!("Subscriber: key={:?}, val={:?}", k.0, v.map(|v| v.0));
+    //     prod_downstream.try_push(Entry1 { key: k, value: v.unwrap_or(Value1(0)) }).unwrap();
+    // });
+    sub_prod_1.try_push(Box::new(move |k: Key1, v: Option<Value1>| {
         println!("Subscriber: key={:?}, val={:?}", k.0, v.map(|v| v.0));
-    }).unwrap();
+        prod_downstream.try_push(Entry1 { key: k, value: v.unwrap_or(Value1(0)) }).unwrap();
+    }));
+
 
     thread::sleep(std::time::Duration::from_millis(1));
     
